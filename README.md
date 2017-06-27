@@ -115,7 +115,6 @@ here is the simplified version of how our vehicle works in the real world based 
 **Lf**:
    *  this is the length from the front of vehicle to its center of gravity. Based on this simulator, it is set to the value of 2.67.
 
-
 current_px= v*dt*cos(delta)
 
 current_py= 0.0 
@@ -130,7 +129,6 @@ current_epsi=epsi+v*(-delta)/Lf *dt
 
 
 state<<current_px,current_py,current_psi,current_cte,current_epsi
-
 
 
 ```python
