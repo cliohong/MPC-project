@@ -65,12 +65,21 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+//transform the global waypoints to the car's coordinate system
+vector<double>trans_2_car(double x_car,double y_car, double x_pt, double y_pt, double psi){
+  double x_pts =(x_pt-x_car)*cos(psi)+(y_pt-y_car)*sin(psi);
+  double y_pts=(y_pt-y_car)*cos(psi) - (x_pt-x_car)*sin(psi);
+  return {x_pts,y_pts};
+}
+
+
 int main() {
   uWS::Hub h;
 
   // MPC is initialized here!
   MPC mpc;
-
+  
+  
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -91,16 +100,65 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          
+          //convert mph to m/s
+          v=v*0.45;
+          
+          
+          double delta= j[1]["steering_angle"];
+          double a=j[1]["throttle"];
+          
+    //convert WAYPOINTS to VEHICLE SPACE from GLOBAL SPACE vectorxd
+          
+          Eigen::VectorXd ptsx_2_car=Eigen::VectorXd(ptsx.size());
+          Eigen::VectorXd ptsy_2_car=Eigen::VectorXd(ptsy.size());
+          
+          for(int i=0; i<ptsx.size();i++){
+            auto temp=trans_2_car(px,py,ptsx[i], ptsy[i], psi);
+            ptsx_2_car[i]=temp[0];
+            ptsy_2_car[i]=temp[1];
+          }
+          
+          //fit the polynomial
+          auto coeffs=polyfit(ptsx_2_car, ptsy_2_car, 3);
+          
+          double cte=polyeval(coeffs, 0); //-py
+          double epsi=-atan(coeffs[1]);
+          
+          const double dt=0.1;
+          const double Lf=2.67;
+          
+           // deal with Latency
+          
+          double current_px=v*dt*cos(delta);
+          double current_py=0;  //-v*dt*sin(delta);
+          double current_psi=v/Lf *(-delta)*dt;
+          double current_v=v+a*dt;
+          double current_cte=cte+ v*sin(epsi)*dt;
+          double current_epsi=epsi+v*(-delta) /Lf*dt;
+          
+          
+//          double epsi = atan(coeffs[1]+coeffs[2]*current_px+coeffs[3]*current_px*current_px);
+//          
+//          double cte=current_px - polyeval(coeffs,current_px);
 
+          
+          Eigen::VectorXd state(6);
+          state<<current_px,current_py,current_psi,current_v,current_cte,current_epsi;
+          
+          auto vars=mpc.Solve(state, coeffs);
+          
           /*
           * TODO: Calculate steeering angle and throttle using MPC.
           *
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
 
+          double steer_value= -vars[0]/ deg2rad(25);
+          double throttle_value=vars[1];
+          
+          
           json msgJson;
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
@@ -108,6 +166,9 @@ int main() {
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
+          mpc_x_vals=mpc.sol_x;
+          mpc_y_vals=mpc.sol_y;
+        
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
@@ -116,8 +177,18 @@ int main() {
           msgJson["mpc_y"] = mpc_y_vals;
 
           //Display the waypoints/reference line
+          
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          
+          for (int i=0;i<ptsx.size();i++){
+            double temp_x=ptsx[i];
+            double temp_y=ptsy[i];
+            auto temp_car=trans_2_car(px, py, temp_x, temp_y, psi);
+            next_x_vals.push_back(temp_car[0]);
+            next_y_vals.push_back(temp_car[1]);
+            
+          }
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
